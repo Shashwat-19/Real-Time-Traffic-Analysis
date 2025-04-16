@@ -45,19 +45,16 @@ This version introduces live traffic monitoring, real-time predictions, and a vi
 
 ## 🔁 How It Works
 
-1. Calls **TomTom Traffic API** for each location.
-2. Extracts:
-   - `Current Speed`
-   - `Free Flow Speed`
-   - `Confidence`
-3. Labels traffic as:
-   - `Congested` if speed is significantly lower than free flow speed and confidence is low.
-   - `Normal` otherwise.
-4. Trains an **SVM Classifier** on preprocessed data.
-5. Generates:
-   - **Bar chart** of predicted vs actual results
-   - **Classification report**
-   - **Folium map** with color-coded markers
+The project fetches real-time traffic data from the TomTom API for various Bangalore locations. It extracts features like current speed, free flow speed, and confidence, and labels traffic as either **Normal** or **Congested** based on defined thresholds. An SVM classifier is trained on this data to predict traffic conditions, and results are visualized using charts and an interactive map.
+
+### ✅ Key Steps
+
+- Fetch live traffic data *(speed, free flow speed, confidence)*
+- Label data based on speed drop and confidence
+- Train and test **SVM classifier**
+- Visualize predictions vs actuals in a **bar chart**
+- Display traffic on a **folium map** with color-coded markers
+
 
 ---
 
@@ -137,14 +134,6 @@ jupyter notebook Traffic_Analysis_Bangalore.ipynb
 
 All code is heavily commented and documented in the notebook itself.  
 Additional notes and usage guides will be published on [my blog](https://shashwat-filenest.hashnode.dev/).
-
----
-
-## 📈 Future Enhancements
-
-- 🔄 Automate hourly traffic updates
-- 🧠 Try advanced ML models like Random Forest or XGBoost
-- 📲 Build a dashboard using Streamlit or Flask
 
 ---
 
