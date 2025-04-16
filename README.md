@@ -146,10 +146,8 @@ Additional notes and usage guides will be published on [my blog](https://shashwa
 
 ---
 
-## 📝 License
-
-This project is licensed under the **MIT License**.  
-See the [LICENSE](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/LICENSE) file for details.
+## 🔒 License
+This project is licensed under the **MIT LICENSE**. See the [LICENSE](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/LICENSE) file for details.
 
 ---
 
