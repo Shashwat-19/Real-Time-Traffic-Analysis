@@ -7,6 +7,8 @@
 
 ---
 
+![BannerBangalore Traffic Visualization Preview](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/raw/main/Assets/Banner.jpeg)
+
 ## 🧭 Overview  
 **Real-Time Traffic Analysis** is a machine learning project that leverages the **TomTom Traffic API** to analyze live traffic conditions in Bangalore. It classifies routes as **Congested** or **Normal** using a **Support Vector Machine (SVM)** and visualizes both predictions and real data on an interactive map and performance charts.
 
