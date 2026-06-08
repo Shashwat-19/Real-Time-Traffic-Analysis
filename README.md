@@ -1,161 +1,214 @@
+# Real-Time Traffic Congestion Prediction and Geospatial Analytics Platform
 
-# 🚦 Real-Time Traffic Analysis (Bangalore)
+Production-oriented ML engineering project for collecting live traffic flow data from the TomTom Traffic Flow API, storing historical observations, training congestion prediction models, exposing FastAPI endpoints, and visualizing geospatial analytics in Streamlit.
 
-[![GitHub stars](https://img.shields.io/github/stars/Shashwat-19/Real-Time-Traffic-Analysis?style=social)](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/stargazers)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org)
+## Architecture
 
----
-
-![BannerBangalore Traffic Visualization Preview](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/raw/main/Assets/Banner.jpeg)
-
-## 🧭 Overview  
-**Real-Time Traffic Analysis** is a machine learning project that leverages the **TomTom Traffic API** to analyze live traffic conditions in Bangalore. It classifies routes as **Congested** or **Normal** using a **Support Vector Machine (SVM)** and visualizes both predictions and real data on an interactive map and performance charts.
-
----
-
-## 📦 Latest Version: [v1.0](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/releases/tag/v1.0)  
-This version introduces live traffic monitoring, real-time predictions, and a visual map powered by **Folium**.
-
----
-
-## ✨ Features
-
-- 📡 **Live Traffic Data** — Fetches real-time speed, free-flow speed, and confidence using TomTom API.
-- 🤖 **Machine Learning Model** — Uses **SVM** classifier from `scikit-learn` to label traffic as `Normal` or `Congested`.
-- 🧮 **Performance Metrics** — View confusion matrix and classification report.
-- 📊 **Bar Chart Visualization** — Displays actual vs predicted traffic labels.
-- 🗺️ **Interactive Folium Map** — Highlights traffic status with colored markers:
-  - 🟢 Green = Normal  
-  - 🔴 Red = Congested
-
----
-
-## 📍 Monitored Locations
-
-```
-📌 MG Road  
-📌 Whitefield  
-📌 Electronic City  
-📌 Hebbal  
-📌 Yelahanka
+```text
+TomTom Traffic Flow API
+        |
+        v
+Scheduler / main.py
+        |
+        v
+CSV Repository  --->  Feature Engineering  --->  Model Training / Evaluation
+        |                         |                         |
+        v                         v                         v
+FastAPI Service             Streamlit Dashboard        models/traffic_model.pkl
 ```
 
----
+The current storage layer uses CSV files through `TrafficDataRepository`. API, dashboard, and ML modules depend on that repository boundary so the project can migrate to PostgreSQL later with minimal changes.
 
-## 🔁 How It Works
+## Features
 
-The project fetches real-time traffic data from the TomTom API for various Bangalore locations. It extracts features like current speed, free flow speed, and confidence, and labels traffic as either **Normal** or **Congested** based on defined thresholds. An SVM classifier is trained on this data to predict traffic conditions, and results are visualized using charts and an interactive map.
+- TomTom Flow Segment Data API integration with environment-based credentials.
+- Incremental CSV storage for raw and processed traffic data.
+- Scheduler that collects live data every 10 minutes.
+- Feature engineering for speed ratio, time fields, weekend and peak-hour flags, and congestion labels.
+- Model comparison across Logistic Regression, Random Forest, XGBoost, and SVM.
+- Persisted best model at `models/traffic_model.pkl`.
+- FastAPI endpoints for health, latest traffic, history, and prediction.
+- Streamlit dashboard with live metrics, Folium marker clustering, Plotly analytics, and prediction form.
+- Docker and Docker Compose for API, dashboard, and scheduler services.
+- GitHub Actions CI for dependency installation, linting, and tests.
 
-### ✅ Key Steps
+## Tech Stack
 
-- Fetch live traffic data *(speed, free flow speed, confidence)*
-- Label data based on speed drop and confidence
-- Train and test **SVM classifier**
-- Visualize predictions vs actuals in a **bar chart**
-- Display traffic on a **folium map** with color-coded markers
+- Backend: Python 3.11, FastAPI, Uvicorn
+- Machine Learning: Pandas, NumPy, Scikit-Learn, XGBoost, Joblib
+- Visualization: Folium, Plotly, Streamlit
+- Data Storage: CSV now, repository pattern for PostgreSQL migration later
+- Deployment: Docker, Docker Compose, GitHub Actions
 
-
----
-
-## 🧪 Try It on Google Colab
-
-✅ No installation hassles  
-✅ All dependencies install automatically  
-✅ Results update in real-time  
-<br>
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/Traffic_Analysis_Bangalore.ipynb)
-
----
-
-## 🧰 Tech Stack
-
-- **Language**: Python 🐍  
-- **Libraries**: Pandas, NumPy, Scikit-learn, Matplotlib, Folium  
-- **API**: TomTom Traffic API  
-- **Visualization**: Bar charts & interactive maps
-
----
-
-## 📁 Project Structure
-
-```
-Real-Time-Traffic-Analysis/
-├── Traffic_Analysis_Bangalore.ipynb
-├── bangalore_traffic_data.csv
-├── bangalore_traffic_map.html
-├── utils/
-│   └── preprocessing.py
-├── assets/
-│   └── screenshots/
-└── README.md
-```
-
----
-
-## 📂 Output Files
-
-| File                          | Description                                  |
-|------------------------------|----------------------------------------------|
-| `bangalore_traffic_data.csv` | Dataset with traffic features and labels     |
-| `bangalore_traffic_map.html` | Interactive traffic map for Bangalore        |
-| Inline graphs (in Colab)     | Classification report, confusion matrix etc. |
-
----
-
-## 🔐 API Key Setup
-
-To use the TomTom API:
-
-1. Sign up at [developer.tomtom.com](https://developer.tomtom.com)
-2. Create a project and generate a **free API key**
-3. Replace the placeholder in the notebook:
-   ```python
-   TOMTOM_API_KEY = "YOUR_API_KEY_HERE"
-   ```
-
----
-
-## 🚀 Run Locally
+## Installation
 
 ```bash
-# Clone the repo
-git clone https://github.com/Shashwat-19/Real-Time-Traffic-Analysis.git
-cd Real-Time-Traffic-Analysis
-
-# Open Jupyter Notebook
-jupyter notebook Traffic_Analysis_Bangalore.ipynb
+cd ~/Desktop/Real-Time-Traffic-Analysis
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
----
+Edit `.env` and set `TOMTOM_API_KEY`.
 
-## 📖 Documentation
+`LOCATIONS` format:
 
-All code is heavily commented and documented in the notebook itself.  
-Additional notes and usage guides will be published on [my blog](https://shashwat-filenest.hashnode.dev/).
+```text
+Location Name:latitude:longitude,Another Location:latitude:longitude
+```
 
----
+## Usage
 
-## 🔒 License
-This project is licensed under the **MIT LICENSE**. See the [LICENSE](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/LICENSE) file for details.
+Collect one batch through the scheduler entry point:
 
----
+```bash
+python main.py
+```
 
-## 📩 Contact  
-### Shashwat  
-**Software Developer | Cloud & DevOps Enthusiast**
+Train a model after enough historical records are collected:
 
-**🔹 Java Backend Development**<br>
-**🔹 Cloud Architecture & Containerization**<br>
-**🔹 DevOps & Scalable Systems**
+```bash
+python -m src.train
+```
 
-### 🚀 Open Source | Tech Innovation  
-Passionate about building scalable applications and contributing to transformative tech solutions.
+Run the FastAPI service:
 
-### 📌 Find me here:  
-[<img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" />](https://github.com/Shashwat-19)  [<img src="https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white" />](https://www.linkedin.com/in/shashwatk1956/)  [<img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" />](mailto:shashwat1956@gmail.com)  [<img src="https://img.shields.io/badge/Hashnode-2962FF?style=for-the-badge&logo=hashnode&logoColor=white" />](https://hashnode.com/@Shashwat56)
+```bash
+uvicorn api.main:app --reload
+```
 
----
+Open API docs:
 
-**🔁 Fork it, run it, improve it — let’s make Bangalore traffic predictable together! 🚗**
+```text
+http://localhost:8000/docs
+```
+
+Run the dashboard:
+
+```bash
+streamlit run src/app.py
+```
+
+Open dashboard:
+
+```text
+http://localhost:8501
+```
+
+## API Documentation
+
+### `GET /health`
+
+Returns service status and current UTC timestamp.
+
+### `GET /traffic/latest?limit=20`
+
+Returns the latest feature-enriched traffic observations.
+
+### `GET /traffic/history?limit=100`
+
+Returns historical feature-enriched traffic observations.
+
+### `POST /predict`
+
+Request body:
+
+```json
+{
+  "location_name": "New Delhi",
+  "latitude": 28.6139,
+  "longitude": 77.209,
+  "current_speed": 25,
+  "free_flow_speed": 55,
+  "confidence": 0.9,
+  "travel_time": 180,
+  "road_closure": false
+}
+```
+
+Response:
+
+```json
+{
+  "prediction": "Medium",
+  "probabilities": {
+    "High": 0.12,
+    "Low": 0.18,
+    "Medium": 0.70
+  },
+  "features": {}
+}
+```
+
+## Docker Deployment
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Services:
+
+- API: `http://localhost:8000`
+- Dashboard: `http://localhost:8501`
+- Scheduler: background collection service
+
+## Testing
+
+```bash
+pytest -q
+ruff check .
+```
+
+## Dashboard Screenshots
+
+Add screenshots to `outputs/reports/` after running the dashboard:
+
+- `outputs/reports/dashboard-overview.png`
+- `outputs/reports/map-view.png`
+- `outputs/reports/prediction-form.png`
+
+## Project Structure
+
+```text
+Real-Time-Traffic-Analysis/
+├── data/
+│   ├── raw/
+│   └── processed/
+├── models/
+├── outputs/
+│   ├── maps/
+│   ├── reports/
+│   └── metrics/
+├── notebooks/
+│   └── EDA.ipynb
+├── src/
+│   ├── data_fetcher.py
+│   ├── data_storage.py
+│   ├── feature_engineering.py
+│   ├── preprocessing.py
+│   ├── train.py
+│   ├── evaluate.py
+│   ├── predict.py
+│   ├── map_generator.py
+│   └── app.py
+├── api/
+│   └── main.py
+├── tests/
+├── .github/workflows/ci.yml
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── README.md
+└── main.py
+```
+
+## Future Improvements
+
+- Replace CSV storage with PostgreSQL and SQLAlchemy migrations.
+- Add a model registry and experiment tracking.
+- Add authenticated API access.
+- Add live dashboard refresh and background API-triggered collection.
+- Add geohash-based spatial aggregation.
+- Add drift monitoring and retraining automation.
