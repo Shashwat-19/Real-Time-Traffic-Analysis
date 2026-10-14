@@ -1,6 +1,6 @@
 # Real-Time Traffic Congestion Prediction and Geospatial Analytics Platform
 
-Production-oriented ML engineering project for collecting live traffic flow data from the TomTom Traffic Flow API, storing historical observations, training congestion prediction models, exposing FastAPI endpoints, and visualizing geospatial analytics in Streamlit.
+Project for collecting live traffic flow data from the TomTom Traffic Flow API, storing historical observations, training congestion prediction models, exposing FastAPI endpoints, and visualizing geospatial analytics in Streamlit.
 
 ## Architecture
 
@@ -17,24 +17,24 @@ CSV Repository  --->  Feature Engineering  --->  Model Training / Evaluation
 FastAPI Service             Streamlit Dashboard        models/traffic_model.pkl
 ```
 
-The current storage layer uses CSV files through `TrafficDataRepository`. API, dashboard, and ML modules depend on that repository boundary so the project can migrate to PostgreSQL later with minimal changes.
+The storage layer uses CSV files through `TrafficDataRepository`. API, dashboard, and ML modules depend on that repository boundary, so the project can move to PostgreSQL later with minimal changes.
 
 ## Features
 
-- TomTom Flow Segment Data API integration with environment-based credentials.
-- Incremental CSV storage for raw and processed traffic data.
-- Scheduler that collects live data every 10 minutes.
-- Feature engineering for speed ratio, time fields, weekend and peak-hour flags, and congestion labels.
-- Model comparison across Logistic Regression, Random Forest, XGBoost, and SVM.
-- Persisted best model at `models/traffic_model.pkl`.
+- TomTom Flow Segment Data API integration, with the key read from the environment.
+- Raw observations appended to a CSV file, with repeated readings skipped.
+- Scheduler that collects data every `FETCH_INTERVAL_MINUTES` (default 10).
+- Feature engineering for speed ratio, local-time fields (Asia/Kolkata), weekend and peak-hour flags, and congestion labels.
+- Model comparison across Logistic Regression, Random Forest, XGBoost, and SVM, with a chronological train/test split.
+- Persisted best model at `models/traffic_model.pkl`, with a SHA-256 sidecar and a metadata file that are checked before loading.
 - FastAPI endpoints for health, latest traffic, history, and prediction.
-- Streamlit dashboard with live metrics, Folium marker clustering, Plotly analytics, and prediction form.
-- Docker and Docker Compose for API, dashboard, and scheduler services.
-- GitHub Actions CI for dependency installation, linting, and tests.
+- Streamlit dashboard with metrics, a Folium map of the latest reading per location, Plotly charts, and a prediction form.
+- Docker and Docker Compose for the API, dashboard, and scheduler services.
+- GitHub Actions CI (`.github/workflows/ci.yml`) that runs `ruff check .` and `pytest`.
 
 ## Tech Stack
 
-- Backend: Python 3.11, FastAPI, Uvicorn
+- Backend: Python 3.13, FastAPI, Uvicorn
 - Machine Learning: Pandas, NumPy, Scikit-Learn, XGBoost, Joblib
 - Visualization: Folium, Plotly, Streamlit
 - Data Storage: CSV now, repository pattern for PostgreSQL migration later
@@ -42,15 +42,17 @@ The current storage layer uses CSV files through `TrafficDataRepository`. API, d
 
 ## Installation
 
+Run these commands from the cloned repository folder:
+
 ```bash
-cd ~/Desktop/Real-Time-Traffic-Analysis
-python3.11 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt        # runtime only
+pip install -r requirements-dev.txt    # adds pytest, ruff and httpx for tests and linting
 cp .env.example .env
 ```
 
-Edit `.env` and set `TOMTOM_API_KEY`.
+Edit `.env` and set `TOMTOM_API_KEY`. Never commit `.env`; it is in `.gitignore`.
 
 `LOCATIONS` format:
 
@@ -78,37 +80,33 @@ Run the FastAPI service:
 uvicorn api.main:app --reload
 ```
 
-Open API docs:
-
-```text
-http://localhost:8000/docs
-```
+Open API docs at `http://localhost:8000/docs`.
 
 Run the dashboard:
 
 ```bash
-streamlit run src/app.py
+python -m streamlit run src/app.py
 ```
 
-Open dashboard:
+Open the dashboard at `http://localhost:8501`.
 
-```text
-http://localhost:8501
-```
+Note: the plain `streamlit run src/app.py` command fails with `ModuleNotFoundError: No module named 'src'` on the pinned Streamlit 1.41.1, because Streamlit only puts `src/` on the import path. Use `python -m streamlit run src/app.py` (the working directory is then on the path), or `PYTHONPATH=. streamlit run src/app.py`.
 
 ## API Documentation
 
+All traffic endpoints return JSON records. Rows with missing or non-numeric coordinates are left out, and empty values are returned as `null`.
+
 ### `GET /health`
 
-Returns service status and current UTC timestamp.
+Returns service status and the current UTC timestamp.
 
 ### `GET /traffic/latest?limit=20`
 
-Returns the latest feature-enriched traffic observations.
+Returns the newest observation for each location, newest first. `limit` (1-500) caps the number of locations returned.
 
-### `GET /traffic/history?limit=100`
+### `GET /traffic/history?limit=100&since=2026-06-08T10:00:00+00:00`
 
-Returns historical feature-enriched traffic observations.
+Returns the newest observations, newest first. `limit` (1-5000, default 100) caps the number of rows. `since` is an optional ISO 8601 datetime; only rows at or after it are returned. A value without a timezone is read as UTC. An invalid `since` returns 422.
 
 ### `POST /predict`
 
@@ -123,9 +121,12 @@ Request body:
   "free_flow_speed": 55,
   "confidence": 0.9,
   "travel_time": 180,
-  "road_closure": false
+  "road_closure": false,
+  "timestamp": "2026-06-08T08:00:00+00:00"
 }
 ```
+
+`timestamp` is optional and defaults to now. The `features` object in the response holds only the model input columns. Latitude must be between -90 and 90, longitude between -180 and 180.
 
 Response:
 
@@ -141,6 +142,14 @@ Response:
 }
 ```
 
+Error responses:
+
+| Status | Meaning |
+|---|---|
+| 422 | Invalid input: a bad `timestamp`, out-of-range latitude, or missing/zero speeds. The body names the problem. |
+| 503 | The model file is missing. Train the model first. |
+| 500 | Unexpected error, including a model whose checksum or metadata does not match. The body is `{"detail": "Internal server error"}`; details are in the server log only. |
+
 ## Docker Deployment
 
 ```bash
@@ -150,16 +159,22 @@ docker compose up --build
 
 Services:
 
-- API: `http://localhost:8000`
-- Dashboard: `http://localhost:8501`
-- Scheduler: background collection service
+- API: `http://127.0.0.1:8000`
+- Dashboard: `http://127.0.0.1:8501`
+- Scheduler: background collection service, the only service that reads `.env`
 
-## Testing
+Ports are published on the loopback interface only, so the API and dashboard are not reachable from other machines. To expose them, change the `127.0.0.1:` prefix in `docker-compose.yml`, and first add authentication to the API.
+
+The API and dashboard mount `data/`, `models/` and `outputs/` read-only. The scheduler writes to `data/`, and the container runs as user `app` (UID 1000). On Linux, make the host `data/` folder writable by UID 1000 (for example `sudo chown -R 1000:1000 data`). Only the scheduler needs `.env`; the API and dashboard use the default paths and need `MODEL_PATH` only if you changed it.
+
+## Testing and Linting
 
 ```bash
 pytest -q
 ruff check .
 ```
+
+CI runs both commands on every push and pull request.
 
 ## Dashboard Screenshots
 
@@ -173,35 +188,42 @@ Add screenshots to `outputs/reports/` after running the dashboard:
 
 ```text
 Real-Time-Traffic-Analysis/
+├── .github/workflows/ci.yml
+├── api/
+│   └── main.py
 ├── data/
 │   ├── raw/
 │   └── processed/
 ├── models/
-├── outputs/
-│   ├── maps/
-│   ├── reports/
-│   └── metrics/
 ├── notebooks/
 │   └── EDA.ipynb
+├── outputs/
+│   ├── maps/
+│   ├── metrics/
+│   └── reports/
 ├── src/
+│   ├── app.py
+│   ├── config.py
 │   ├── data_fetcher.py
 │   ├── data_storage.py
-│   ├── feature_engineering.py
-│   ├── preprocessing.py
-│   ├── train.py
 │   ├── evaluate.py
-│   ├── predict.py
+│   ├── feature_engineering.py
 │   ├── map_generator.py
-│   └── app.py
-├── api/
-│   └── main.py
+│   ├── model_artifacts.py
+│   ├── predict.py
+│   ├── preprocessing.py
+│   └── train.py
 ├── tests/
-├── .github/workflows/ci.yml
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── BangaloreTraffic.ipynb
 ├── Dockerfile
 ├── docker-compose.yml
+├── main.py
+├── pyproject.toml
 ├── requirements.txt
-├── README.md
-└── main.py
+└── requirements-dev.txt
 ```
 
 ## Future Improvements
