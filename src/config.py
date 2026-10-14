@@ -66,6 +66,9 @@ def parse_locations(value: str | None) -> tuple[Location, ...]:
 def get_settings() -> Settings:
     """Create application settings from the current environment."""
 
+    fetch_interval_minutes = int(os.getenv("FETCH_INTERVAL_MINUTES", "10"))
+    if fetch_interval_minutes < 1:
+        raise ValueError(f"FETCH_INTERVAL_MINUTES must be at least 1, got {fetch_interval_minutes}")
     return Settings(
         tomtom_api_key=os.getenv("TOMTOM_API_KEY"),
         locations=parse_locations(os.getenv("LOCATIONS")),
@@ -75,5 +78,5 @@ def get_settings() -> Settings:
         ),
         model_path=resolve_path(os.getenv("MODEL_PATH", "models/traffic_model.pkl")),
         metrics_path=resolve_path(os.getenv("METRICS_PATH", "outputs/metrics/model_metrics.json")),
-        fetch_interval_minutes=int(os.getenv("FETCH_INTERVAL_MINUTES", "10")),
+        fetch_interval_minutes=fetch_interval_minutes,
     )

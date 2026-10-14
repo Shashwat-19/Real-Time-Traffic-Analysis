@@ -23,19 +23,28 @@ def collect_once() -> int:
         raise RuntimeError("TOMTOM_API_KEY is not set")
 
     fetcher = TomTomTrafficFetcher(settings.tomtom_api_key)
-    repository = TrafficDataRepository(settings.raw_data_path, settings.processed_data_path)
+    repository = TrafficDataRepository(settings.raw_data_path)
     records = fetcher.fetch_many(settings.locations)
     written = repository.append_raw_records(records)
     logger.info("Collected %s records; wrote %s new rows", len(records), written)
     return written
 
 
+def collect_safely() -> None:
+    """Run one collection cycle; a failure is logged so the scheduler keeps running."""
+
+    try:
+        collect_once()
+    except Exception:
+        logger.exception("Collection cycle failed")
+
+
 def run_scheduler() -> None:
     """Run collection every configured interval."""
 
     settings = get_settings()
-    schedule.every(settings.fetch_interval_minutes).minutes.do(collect_once)
-    collect_once()
+    schedule.every(settings.fetch_interval_minutes).minutes.do(collect_safely)
+    collect_safely()
     logger.info("Scheduler started with %s minute interval", settings.fetch_interval_minutes)
     while True:
         schedule.run_pending()
