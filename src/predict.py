@@ -7,10 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import joblib
 import pandas as pd
 
 from src.feature_engineering import add_traffic_features
+from src.model_artifacts import load_verified_model
 from src.preprocessing import FEATURE_COLUMNS
 
 
@@ -38,20 +38,29 @@ class TrafficPredictor:
 
     @property
     def model(self) -> Any:
-        """Lazily load the model from disk."""
+        """Lazily load the model from disk, after its checksum and metadata are verified."""
 
         if self._model is None:
-            if not self.model_path.exists():
-                raise FileNotFoundError(f"Model not found at {self.model_path}")
-            self._model = joblib.load(self.model_path)
+            self._model, _ = load_verified_model(self.model_path)
         return self._model
 
     def predict(self, payload: TrafficPredictionInput) -> dict[str, Any]:
         """Predict the congestion class and probability scores."""
 
         record = asdict(payload)
-        record["timestamp"] = record["timestamp"] or datetime.now(UTC).isoformat()
-        features = add_traffic_features(pd.DataFrame([record]))[FEATURE_COLUMNS]
+        timestamp = record["timestamp"] or datetime.now(UTC).isoformat()
+        try:
+            parsed = pd.to_datetime(timestamp, errors="coerce", utc=True)
+        except (TypeError, ValueError, OverflowError):
+            parsed = pd.NaT
+        if pd.isna(parsed):
+            raise ValueError(f"Invalid timestamp: {timestamp!r}")
+        record["timestamp"] = timestamp
+
+        featured = add_traffic_features(pd.DataFrame([record]))
+        if featured.empty:
+            raise ValueError("Prediction input has missing or non-numeric speed values")
+        features = featured[FEATURE_COLUMNS]
         prediction = str(self.model.predict(features)[0])
 
         probabilities: dict[str, float] = {}

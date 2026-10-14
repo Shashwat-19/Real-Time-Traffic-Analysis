@@ -2,35 +2,31 @@
 
 from __future__ import annotations
 
+import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+# The label is derived from current_speed / free_flow_speed, so these must never be inputs.
+LABEL_SOURCE_COLUMNS = frozenset({"current_speed", "free_flow_speed", "speed_ratio", "travel_time"})
+
 FEATURE_COLUMNS = [
     "latitude",
     "longitude",
-    "current_speed",
-    "free_flow_speed",
     "confidence",
-    "travel_time",
-    "road_closure",
-    "speed_ratio",
     "hour",
     "day_of_week",
     "month",
     "is_weekend",
     "peak_hour",
+    "road_closure",
     "location_name",
 ]
 
 NUMERIC_FEATURES = [
     "latitude",
     "longitude",
-    "current_speed",
-    "free_flow_speed",
     "confidence",
-    "travel_time",
-    "speed_ratio",
     "hour",
     "day_of_week",
     "month",
@@ -53,4 +49,25 @@ def build_preprocessor() -> ColumnTransformer:
             ("numeric", numeric_pipeline, NUMERIC_FEATURES),
             ("categorical", categorical_pipeline, CATEGORICAL_FEATURES),
         ]
+    )
+
+
+def split_chronologically(
+    featured: pd.DataFrame, test_size: float = 0.2
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    """Split featured rows by time: earlier rows train, the most recent block tests.
+
+    Shared by training and evaluation so both use the same holdout.
+    """
+
+    if len(featured) < 2:
+        raise ValueError("At least 2 records are needed for a train/test split")
+    ordered = featured.sort_values("timestamp", kind="stable")
+    test_rows = max(1, round(len(ordered) * test_size))
+    train, test = ordered.iloc[:-test_rows], ordered.iloc[-test_rows:]
+    return (
+        train[FEATURE_COLUMNS],
+        test[FEATURE_COLUMNS],
+        train["congestion_level"],
+        test["congestion_level"],
     )
