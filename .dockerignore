@@ -1,6 +1,10 @@
 .env
 .git
 data
+models
 outputs
+.pytest_cache
+.ruff_cache
+.venv
 __pycache__
 *.ipynb

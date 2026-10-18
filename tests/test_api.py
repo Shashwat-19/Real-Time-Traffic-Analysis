@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import api.main as api_main
-from src.config import get_settings
+from src.config import Location, get_settings
 from src.data_storage import RAW_COLUMNS
 from src.model_artifacts import ModelIntegrityError, sidecar_path
 
@@ -145,6 +145,70 @@ def test_latest_drops_rows_with_missing_coordinates(client, settings):
 @pytest.mark.parametrize("limit", [0, 501])
 def test_latest_limit_bounds(client, limit):
     assert client.get("/traffic/latest", params={"limit": limit}).status_code == 422
+
+
+def use_locations(monkeypatch, settings, names):
+    """Make the configured locations (the known set) exactly `names`."""
+
+    locations = tuple(Location(name, 0.0, 0.0) for name in names)
+    base = dataclasses.replace(settings, locations=locations)
+    monkeypatch.setattr(api_main, "get_settings", lambda: base)
+
+
+def test_latest_reads_only_tail_when_it_covers_all_locations(client, settings, monkeypatch):
+    rows = [raw_row(f"2026-06-08T{hour:02d}:00:00+00:00", speed=hour) for hour in range(8, 18)]
+    rows.append(raw_row("2026-06-08T08:30:00+00:00", location="Delhi", speed=99.0))
+    write_raw(settings, rows)
+    use_locations(monkeypatch, settings, ["Pune", "Delhi"])
+    monkeypatch.setattr(api_main, "LATEST_TAIL_ROWS", 4)
+
+    def full_read_forbidden(self):
+        raise AssertionError("full read used although the tail covers every location")
+
+    monkeypatch.setattr(api_main.TrafficDataRepository, "read_raw", full_read_forbidden)
+    data = client.get("/traffic/latest").json()
+
+    assert sorted((item["location_name"], item["current_speed"]) for item in data) == [
+        ("Delhi", 99.0),
+        ("Pune", 17.0),
+    ]
+
+
+def test_latest_falls_back_to_full_read_for_location_only_in_early_rows(
+    client, settings, monkeypatch
+):
+    rows = [raw_row("2026-06-08T08:30:00+00:00", location="Delhi", speed=99.0)]
+    rows += [raw_row(f"2026-06-08T{hour:02d}:00:00+00:00", speed=hour) for hour in range(9, 19)]
+    write_raw(settings, rows)
+    use_locations(monkeypatch, settings, ["Pune", "Delhi"])
+    monkeypatch.setattr(api_main, "LATEST_TAIL_ROWS", 4)
+
+    data = client.get("/traffic/latest").json()
+
+    assert sorted((item["location_name"], item["current_speed"]) for item in data) == [
+        ("Delhi", 99.0),
+        ("Pune", 18.0),
+    ]
+
+
+def test_latest_small_file_smaller_than_tail_is_read_whole(client, settings, monkeypatch):
+    write_raw(
+        settings,
+        [
+            raw_row("2026-06-08T08:00:00+00:00", speed=10.0),
+            raw_row("2026-06-08T09:00:00+00:00", speed=45.0),
+            raw_row("2026-06-08T08:30:00+00:00", location="Delhi", speed=20.0),
+        ],
+    )
+    use_locations(monkeypatch, settings, ["Pune", "Delhi"])
+    monkeypatch.setattr(api_main, "LATEST_TAIL_ROWS", 10)
+
+    data = client.get("/traffic/latest").json()
+
+    assert sorted((item["location_name"], item["current_speed"]) for item in data) == [
+        ("Delhi", 20.0),
+        ("Pune", 45.0),
+    ]
 
 
 def test_history_empty_when_no_file(client):

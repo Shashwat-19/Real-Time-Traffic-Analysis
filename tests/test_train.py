@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -137,14 +138,34 @@ def test_train_models_excludes_repeat_rows_from_split(tmp_path: Path) -> None:
     assert metrics["split"]["train_rows"] + metrics["split"]["test_rows"] == 90
 
 
+def test_main_writes_processed_csv_without_repeat_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw = _raw()
+    raw["is_repeat"] = np.arange(len(raw)) % 4 == 3  # 30 of 120 readings are repeats
+    raw_path = tmp_path / "raw.csv"
+    raw.to_csv(raw_path, index=False)
+    processed_path = tmp_path / "processed" / "traffic.csv"
+    settings = SimpleNamespace(
+        raw_data_path=raw_path,
+        processed_data_path=processed_path,
+        model_path=tmp_path / "m.pkl",
+        metrics_path=tmp_path / "metrics.json",
+    )
+    monkeypatch.setattr(train_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(train_module, "train_models", lambda *_a, **_k: {"best_model": "stub"})
+
+    train_module.main()
+
+    assert len(pd.read_csv(processed_path)) == 90
+
+
 def test_train_models_rejects_too_little_data(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="At least 25 records"):
         train_models(_raw(count=10), tmp_path / "m.pkl", tmp_path / "metrics.json")
 
 
-def test_svm_training_rows_are_capped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_svm_training_rows_are_capped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(train_module, "SVM_MAX_TRAIN_ROWS", 30)
 
     metrics = train_models(_raw(), tmp_path / "m.pkl", tmp_path / "metrics.json")

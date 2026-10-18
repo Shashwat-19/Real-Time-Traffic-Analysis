@@ -21,12 +21,12 @@ The storage layer uses CSV files through `TrafficDataRepository`. API, dashboard
 
 ## Features
 
-- TomTom Flow Segment Data API integration, with the key read from the environment.
-- Raw observations appended to a CSV file, with repeated readings skipped.
+- TomTom Flow Segment Data API integration, with the key read from the environment. Readings with a missing `roadClosure` or a `confidence` outside 0-1 are rejected.
+- Raw observations appended to a CSV file. Repeated readings are stored with an `is_repeat` flag, and training and evaluation skip them.
 - Scheduler that collects data every `FETCH_INTERVAL_MINUTES` (default 10).
 - Feature engineering for speed ratio, local-time fields (Asia/Kolkata), weekend and peak-hour flags, and congestion labels.
 - Model comparison across Logistic Regression, Random Forest, XGBoost, and SVM, with a chronological train/test split.
-- Persisted best model at `models/traffic_model.pkl`, with a SHA-256 sidecar and a metadata file that are checked before loading.
+- Persisted best model at `models/traffic_model.pkl`, with a SHA-256 sidecar and a metadata file that are checked before loading. The API reloads the model when the file or its sidecars change.
 - FastAPI endpoints for health, latest traffic, history, and prediction.
 - Streamlit dashboard with metrics, a Folium map of the latest reading per location, Plotly charts, and a prediction form.
 - Docker and Docker Compose for the API, dashboard, and scheduler services.
@@ -34,7 +34,7 @@ The storage layer uses CSV files through `TrafficDataRepository`. API, dashboard
 
 ## Tech Stack
 
-- Backend: Python 3.13, FastAPI, Uvicorn
+- Backend: Python 3.12 or 3.13 (3.14 fails to build pydantic-core), FastAPI, Uvicorn
 - Machine Learning: Pandas, NumPy, Scikit-Learn, XGBoost, Joblib
 - Visualization: Folium, Plotly, Streamlit
 - Data Storage: CSV now, repository pattern for PostgreSQL migration later
@@ -53,6 +53,8 @@ cp .env.example .env
 ```
 
 Edit `.env` and set `TOMTOM_API_KEY`. Never commit `.env`; it is in `.gitignore`.
+
+The Bangalore notebook (`BangaloreTraffic.ipynb`) does not read `.env`. Export `TOMTOM_API_KEY` in your shell before running it. It builds its history in `bangalore_traffic_data.csv`.
 
 `LOCATIONS` format:
 

@@ -167,7 +167,8 @@ def main() -> None:
     if not settings.raw_data_path.exists():
         raise FileNotFoundError(f"Raw data not found at {settings.raw_data_path}; run collector")
     raw_df = pd.read_csv(settings.raw_data_path)
-    featured = ensure_features(raw_df)
+    # Repeats are dropped here too so the processed CSV matches the rows the models train on.
+    featured = ensure_features(exclude_repeats(raw_df))
     settings.processed_data_path.parent.mkdir(parents=True, exist_ok=True)
     featured.to_csv(settings.processed_data_path, index=False)
     metrics = train_models(featured, settings.model_path, settings.metrics_path)

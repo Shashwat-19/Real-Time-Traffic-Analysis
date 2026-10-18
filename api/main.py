@@ -90,17 +90,37 @@ def reset_predictor() -> None:
     _predictor_key = None
 
 
+def _sort_by_time(rows: pd.DataFrame) -> pd.DataFrame:
+    """Parse timestamps (UTC), drop unparseable ones and sort oldest first."""
+
+    rows = rows.assign(timestamp=pd.to_datetime(rows["timestamp"], errors="coerce", utc=True))
+    return rows.dropna(subset=["timestamp"]).sort_values("timestamp", kind="stable")
+
+
 def _sorted_rows(since: datetime | None = None) -> pd.DataFrame:
     """Read raw rows in time order, optionally keeping only those at or after `since`."""
 
-    rows = repository().read_raw()
-    rows = rows.assign(timestamp=pd.to_datetime(rows["timestamp"], errors="coerce", utc=True))
-    rows = rows.dropna(subset=["timestamp"]).sort_values("timestamp", kind="stable")
+    rows = _sort_by_time(repository().read_raw())
     if since is not None:
         cutoff = pd.Timestamp(since)
         cutoff = cutoff.tz_localize(UTC) if cutoff.tzinfo is None else cutoff.tz_convert(UTC)
         rows = rows[rows["timestamp"] >= cutoff]
     return rows
+
+
+LATEST_TAIL_ROWS = 5000  # data rows read from the end of the file by /traffic/latest
+
+
+def _latest_frame() -> pd.DataFrame:
+    """Rows for /traffic/latest: the file tail, or the whole file if the tail misses a location."""
+
+    tail, whole = repository().read_raw_tail(LATEST_TAIL_ROWS)
+    # shortcut: only configured locations are checked, so a location removed from LOCATIONS
+    # and seen only before the tail is left out; upgrade by keeping a per-location index.
+    known = {location.name for location in get_settings().locations}
+    if not whole and not known <= set(tail["location_name"]):
+        return _sorted_rows()
+    return _sort_by_time(tail)
 
 
 def _to_records(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
@@ -125,7 +145,7 @@ def latest_traffic(limit: int = Query(20, ge=1, le=500)) -> list[dict[str, Any]]
     """Return the newest observation for each location (at most `limit` locations)."""
 
     try:
-        rows = _sorted_rows().groupby("location_name", sort=False).tail(1).tail(limit)
+        rows = _latest_frame().groupby("location_name", sort=False).tail(1).tail(limit)
         if rows.empty:
             return []
         features = add_traffic_features(rows)

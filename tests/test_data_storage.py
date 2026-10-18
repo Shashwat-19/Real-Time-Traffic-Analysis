@@ -168,3 +168,63 @@ def test_failed_write_leaves_original_file_intact(
 
     assert raw_path.read_text() == original
     assert list(raw_path.parent.glob("*.tmp")) == []
+
+
+def write_rows(raw_path: Path, count: int) -> None:
+    rows = [record(timestamp=f"2026-10-14T{hour:02d}:00:00+00:00") for hour in range(count)]
+    raw_path.parent.mkdir(parents=True)
+    pd.DataFrame(rows, columns=RAW_COLUMNS).to_csv(raw_path, index=False)
+
+
+def test_read_raw_tail_returns_last_rows_with_header(raw_path: Path) -> None:
+    write_rows(raw_path, 10)
+
+    frame, whole = TrafficDataRepository(raw_path).read_raw_tail(3)
+
+    assert not whole
+    assert frame["timestamp"].tolist() == [
+        "2026-10-14T07:00:00+00:00",
+        "2026-10-14T08:00:00+00:00",
+        "2026-10-14T09:00:00+00:00",
+    ]
+    assert list(frame.columns) == [*RAW_COLUMNS, "is_repeat"]
+
+
+@pytest.mark.parametrize("block_bytes", [1, 7, 64 * 1024])
+def test_read_raw_tail_handles_cut_inside_a_row(
+    raw_path: Path, monkeypatch: pytest.MonkeyPatch, block_bytes: int
+) -> None:
+    import src.data_storage as data_storage
+
+    monkeypatch.setattr(data_storage, "_TAIL_BLOCK_BYTES", block_bytes)
+    write_rows(raw_path, 6)
+
+    frame, whole = TrafficDataRepository(raw_path).read_raw_tail(2)
+
+    assert not whole
+    assert frame["timestamp"].tolist() == [
+        "2026-10-14T04:00:00+00:00",
+        "2026-10-14T05:00:00+00:00",
+    ]
+    assert frame["current_speed"].tolist() == [32.0, 32.0]
+
+
+def test_read_raw_tail_small_file_is_whole(raw_path: Path) -> None:
+    write_rows(raw_path, 3)
+
+    frame, whole = TrafficDataRepository(raw_path).read_raw_tail(10)
+
+    assert whole
+    assert len(frame) == 3
+
+
+def test_read_raw_tail_header_only_and_missing_file(raw_path: Path) -> None:
+    repo = TrafficDataRepository(raw_path)
+    frame, whole = repo.read_raw_tail(5)
+    assert frame.empty and whole
+
+    raw_path.parent.mkdir(parents=True)
+    pd.DataFrame(columns=RAW_COLUMNS).to_csv(raw_path, index=False)
+    frame, whole = repo.read_raw_tail(5)
+    assert frame.empty and whole
+    assert list(frame.columns) == [*RAW_COLUMNS, "is_repeat"]

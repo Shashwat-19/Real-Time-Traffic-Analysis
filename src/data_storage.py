@@ -6,6 +6,7 @@ implementation can replace it later without changing API or ML code.
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 from collections.abc import Iterable
@@ -36,6 +37,8 @@ VALUE_COLUMNS = [column for column in RAW_COLUMNS if column != "timestamp"]
 # Every reading is stored. is_repeat flags a reading whose values equal the previous stored
 # reading for the same location; training and evaluation exclude those rows.
 STORED_COLUMNS = [*RAW_COLUMNS, "is_repeat"]
+
+_TAIL_BLOCK_BYTES = 64 * 1024  # bytes read per step when scanning backwards for a tail
 
 
 class TrafficDataRepository:
@@ -82,6 +85,43 @@ class TrafficDataRepository:
         if "is_repeat" not in frame.columns:  # files written before the flag existed
             frame["is_repeat"] = False
         return frame
+
+    def read_raw_tail(self, data_rows: int) -> tuple[pd.DataFrame, bool]:
+        """Read the header and the last `data_rows` rows, without reading the whole file.
+
+        The flag is True when those rows are the whole file (nothing was left out).
+        """
+
+        if not self.raw_path.exists():
+            return pd.DataFrame(columns=STORED_COLUMNS), True
+        with self.raw_path.open("rb") as handle:
+            header = handle.readline()
+            if not header:
+                return pd.DataFrame(columns=STORED_COLUMNS), True
+            start = handle.tell()
+            pos = os.fstat(handle.fileno()).st_size
+            chunk = b""
+            # Step backwards until there is one more newline than rows needed, so the
+            # partial line at the cut is always among the extra ones.
+            while pos > start and chunk.count(b"\n") <= data_rows:
+                step = min(_TAIL_BLOCK_BYTES, pos - start)
+                pos -= step
+                handle.seek(pos)
+                chunk = handle.read(step) + chunk
+            whole = pos <= start
+            lines = chunk.split(b"\n")
+            if not whole:
+                handle.seek(pos - 1)
+                starts_on_line = handle.read(1) == b"\n"
+                if not starts_on_line:  # the first piece is the end of a row cut in two
+                    lines = lines[1:]
+        rows = [line for line in lines if line.strip()]
+        whole = whole and len(rows) <= data_rows
+        body = rows[-data_rows:]
+        frame = pd.read_csv(io.BytesIO(header + b"".join(line + b"\n" for line in body)))
+        if "is_repeat" not in frame.columns:
+            frame["is_repeat"] = False
+        return frame, whole
 
     def _load_existing(self) -> pd.DataFrame:
         """Return stored rows. An unreadable or foreign-schema file is moved aside."""
