@@ -26,8 +26,10 @@ RAW_COLUMNS = [
     "free_flow_speed",
     "confidence",
     "travel_time",
-    "road_closure",
 ]
+
+# Dropped on read so files written before the column was removed still load and rewrite cleanly.
+LEGACY_COLUMNS = ["road_closure"]
 
 # A record is a repeat when its measured values equal the previous record for the same
 # location. TomTom sends no observation time and our timestamp is the fetch time, so
@@ -39,6 +41,15 @@ VALUE_COLUMNS = [column for column in RAW_COLUMNS if column != "timestamp"]
 STORED_COLUMNS = [*RAW_COLUMNS, "is_repeat"]
 
 _TAIL_BLOCK_BYTES = 64 * 1024  # bytes read per step when scanning backwards for a tail
+
+
+def _normalize(frame: pd.DataFrame) -> pd.DataFrame:
+    """Drop legacy columns and default is_repeat for files written before the flag existed."""
+
+    frame = frame.drop(columns=LEGACY_COLUMNS, errors="ignore")
+    if "is_repeat" not in frame.columns:
+        frame["is_repeat"] = False
+    return frame
 
 
 class TrafficDataRepository:
@@ -82,9 +93,7 @@ class TrafficDataRepository:
             frame = pd.read_csv(self.raw_path)
         except pd.errors.EmptyDataError:
             return pd.DataFrame(columns=STORED_COLUMNS)
-        if "is_repeat" not in frame.columns:  # files written before the flag existed
-            frame["is_repeat"] = False
-        return frame
+        return _normalize(frame)
 
     def read_raw_tail(self, data_rows: int) -> tuple[pd.DataFrame, bool]:
         """Read the header and the last `data_rows` rows, without reading the whole file.
@@ -119,9 +128,7 @@ class TrafficDataRepository:
         whole = whole and len(rows) <= data_rows
         body = rows[-data_rows:]
         frame = pd.read_csv(io.BytesIO(header + b"".join(line + b"\n" for line in body)))
-        if "is_repeat" not in frame.columns:
-            frame["is_repeat"] = False
-        return frame, whole
+        return _normalize(frame), whole
 
     def _load_existing(self) -> pd.DataFrame:
         """Return stored rows. An unreadable or foreign-schema file is moved aside."""

@@ -19,7 +19,6 @@ def record(**overrides: Any) -> dict[str, Any]:
         "free_flow_speed": 55.0,
         "confidence": 0.9,
         "travel_time": 120.0,
-        "road_closure": False,
     }
     row.update(overrides)
     return row
@@ -149,6 +148,22 @@ def test_file_without_is_repeat_column_loads_with_flags_false(raw_path: Path) ->
     frame = TrafficDataRepository(raw_path).read_raw()
 
     assert frame["is_repeat"].tolist() == [False]
+
+
+def test_legacy_road_closure_column_is_dropped_on_read_and_append(raw_path: Path) -> None:
+    raw_path.parent.mkdir(parents=True)
+    legacy = pd.DataFrame([record()], columns=RAW_COLUMNS)
+    legacy["road_closure"] = False
+    legacy.to_csv(raw_path, index=False)
+    repo = TrafficDataRepository(raw_path)
+
+    assert "road_closure" not in repo.read_raw().columns
+
+    repo.append_raw_records([record(current_speed=5.0)])
+
+    rewritten = pd.read_csv(raw_path)
+    assert list(rewritten.columns) == [*RAW_COLUMNS, "is_repeat"]
+    assert rewritten["is_repeat"].tolist() == [False, False]
 
 
 def test_failed_write_leaves_original_file_intact(

@@ -56,8 +56,6 @@ def add_traffic_features(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     for column in ["current_speed", "free_flow_speed", "confidence", "travel_time"]:
         df[column] = pd.to_numeric(df[column], errors="coerce")
-    # Only True/False are kept; a missing flag stays missing (NaN) instead of becoming True.
-    df["road_closure"] = df["road_closure"].map({True: True, False: False})
 
     # A zero or missing free-flow speed leaves the ratio undefined (NaN), never 0.
     free_flow = df["free_flow_speed"].where(df["free_flow_speed"] > 0)

@@ -115,7 +115,6 @@ def render_prediction_form() -> None:
         free_flow_speed = col2.number_input("Free Flow Speed", min_value=1.0, value=55.0)
         confidence = col2.slider("Confidence", min_value=0.0, max_value=1.0, value=0.9)
         travel_time = col2.number_input("Travel Time", min_value=0.0, value=180.0)
-        road_closure = col2.checkbox("Road Closure")
         submitted = st.form_submit_button("Predict Congestion")
 
     if submitted:
@@ -132,7 +131,6 @@ def render_prediction_form() -> None:
                     free_flow_speed=free_flow_speed,
                     confidence=confidence,
                     travel_time=travel_time,
-                    road_closure=road_closure,
                     timestamp=datetime.now(UTC).isoformat(),
                 )
             )

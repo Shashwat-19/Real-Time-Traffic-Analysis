@@ -36,7 +36,6 @@ def _raw(count: int = 120, seed: int = 0) -> pd.DataFrame:
                 "free_flow_speed": 50.0,
                 "confidence": 0.9,
                 "travel_time": 100.0,
-                "road_closure": False,
             }
         )
     return pd.DataFrame(rows)

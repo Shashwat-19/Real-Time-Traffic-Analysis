@@ -25,7 +25,6 @@ class TrafficPredictionInput:
     free_flow_speed: float
     confidence: float
     travel_time: float
-    road_closure: bool = False
     timestamp: str | None = None
 
 

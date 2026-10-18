@@ -19,7 +19,6 @@ FEATURE_COLUMNS = [
     "month",
     "is_weekend",
     "peak_hour",
-    "road_closure",
     "location_name",
 ]
 
@@ -34,7 +33,7 @@ NUMERIC_FEATURES = [
     "peak_hour",
 ]
 
-CATEGORICAL_FEATURES = ["road_closure", "location_name"]
+CATEGORICAL_FEATURES = ["location_name"]
 
 
 def build_preprocessor() -> ColumnTransformer:

@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from src.feature_engineering import add_traffic_features, classify_congestion
+from src.preprocessing import CATEGORICAL_FEATURES, FEATURE_COLUMNS
 
 
 def _row(timestamp: str, **overrides: object) -> dict:
@@ -19,7 +20,6 @@ def _row(timestamp: str, **overrides: object) -> dict:
         "free_flow_speed": 50,
         "confidence": 0.9,
         "travel_time": 150,
-        "road_closure": False,
     }
     row.update(overrides)
     return row
@@ -101,9 +101,7 @@ def test_timestamps_are_converted_to_ist_before_extracting_hour() -> None:
 def test_weekend_flag_uses_ist_day() -> None:
     saturday = add_traffic_features(pd.DataFrame([_row("2026-06-06T10:00:00+05:30")]))
     # Sunday 20:00 UTC is already Monday 01:30 IST, so it is a weekday locally.
-    sunday_utc_monday_ist = add_traffic_features(
-        pd.DataFrame([_row("2026-06-07T20:00:00+00:00")])
-    )
+    sunday_utc_monday_ist = add_traffic_features(pd.DataFrame([_row("2026-06-07T20:00:00+00:00")]))
 
     assert saturday.loc[0, "is_weekend"] == 1
     assert sunday_utc_monday_ist.loc[0, "is_weekend"] == 0
@@ -144,25 +142,24 @@ def test_speed_ratio_is_clipped_at_1_5() -> None:
     assert result.loc[0, "congestion_level"] == "Low"
 
 
-def test_missing_road_closure_is_not_treated_as_closed() -> None:
+def test_legacy_road_closure_column_is_ignored() -> None:
     dataframe = pd.DataFrame(
         [
             _row("2026-06-08T08:00:00+00:00", road_closure=None),
             _row("2026-06-08T08:10:00+00:00", road_closure=True),
-            _row("2026-06-08T08:20:00+00:00", road_closure=False),
         ]
     )
     result = add_traffic_features(dataframe)
 
-    assert pd.isna(result.loc[0, "road_closure"])
-    assert result.loc[1, "road_closure"] is True
-    assert result.loc[2, "road_closure"] is False
+    assert len(result) == 2
+    assert result.loc[0, "congestion_level"] == "Medium"
+    assert "road_closure" not in FEATURE_COLUMNS
+    assert "road_closure" not in CATEGORICAL_FEATURES
+    assert set(FEATURE_COLUMNS) <= set(result.columns)
 
 
 def test_invalid_timestamp_rows_are_dropped_and_logged(caplog: pytest.LogCaptureFixture) -> None:
-    dataframe = pd.DataFrame(
-        [_row("2026-06-08T08:00:00+00:00"), _row("not-a-time")]
-    )
+    dataframe = pd.DataFrame([_row("2026-06-08T08:00:00+00:00"), _row("not-a-time")])
     with caplog.at_level(logging.WARNING, logger="src.feature_engineering"):
         result = add_traffic_features(dataframe)
 

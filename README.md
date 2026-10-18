@@ -21,7 +21,7 @@ The storage layer uses CSV files through `TrafficDataRepository`. API, dashboard
 
 ## Features
 
-- TomTom Flow Segment Data API integration, with the key read from the environment. Readings with a missing `roadClosure` or a `confidence` outside 0-1 are rejected.
+- TomTom Flow Segment Data API integration, with the key read from the environment. Readings with a `confidence` outside 0-1 are rejected.
 - Raw observations appended to a CSV file. Repeated readings are stored with an `is_repeat` flag, and training and evaluation skip them.
 - Scheduler that collects data every `FETCH_INTERVAL_MINUTES` (default 10).
 - Feature engineering for speed ratio, local-time fields (Asia/Kolkata), weekend and peak-hour flags, and congestion labels.
@@ -123,7 +123,6 @@ Request body:
   "free_flow_speed": 55,
   "confidence": 0.9,
   "travel_time": 180,
-  "road_closure": false,
   "timestamp": "2026-06-08T08:00:00+00:00"
 }
 ```

@@ -49,7 +49,6 @@ def test_parse_response_extracts_required_fields() -> None:
     assert result["free_flow_speed"] == 55.0
     assert result["confidence"] == 0.93
     assert result["travel_time"] == 120.0
-    assert result["road_closure"] is False
 
 
 @pytest.mark.parametrize(
@@ -87,18 +86,6 @@ def test_parse_response_falls_back_to_location_for_empty_coordinates() -> None:
 def test_parse_response_rejects_malformed_coordinates() -> None:
     with pytest.raises(ValueError):
         TomTomTrafficFetcher.parse_response(valid_payload(coordinates={"coordinate": "x"}), DELHI)
-
-
-@pytest.mark.parametrize("road_closure", [None, "false", 0])
-def test_parse_response_rejects_missing_or_non_boolean_road_closure(road_closure: Any) -> None:
-    payload = valid_payload()
-    if road_closure is None:
-        del payload["flowSegmentData"]["roadClosure"]
-    else:
-        payload["flowSegmentData"]["roadClosure"] = road_closure
-
-    with pytest.raises(ValueError, match="roadClosure"):
-        TomTomTrafficFetcher.parse_response(payload, DELHI)
 
 
 @pytest.mark.parametrize("confidence", [-0.1, 1.5])

@@ -92,7 +92,6 @@ PREDICT_BODY = {
     "free_flow_speed": 60,
     "confidence": 0.9,
     "travel_time": 100,
-    "road_closure": False,
     "timestamp": "2026-06-08T08:00:00+00:00",
 }
 

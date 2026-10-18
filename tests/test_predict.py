@@ -31,7 +31,6 @@ def _input(**overrides: object) -> TrafficPredictionInput:
         "free_flow_speed": 50,
         "confidence": 0.9,
         "travel_time": 190,
-        "road_closure": False,
         "timestamp": "2026-06-08T13:00:00+05:30",
     }
     values.update(overrides)
@@ -55,7 +54,6 @@ def saved_model(tmp_path: Path) -> Path:
                     "free_flow_speed": 50.0,
                     "confidence": 0.9,
                     "travel_time": 150.0,
-                    "road_closure": False,
                 }
             )
     featured = add_traffic_features(pd.DataFrame(rows))

@@ -43,14 +43,6 @@ def _required_number(data: dict[str, Any], field: str) -> float:
     return _number(data[field], field)
 
 
-def _required_bool(data: dict[str, Any], field: str) -> bool:
-    """Return a required boolean. A missing or non-boolean field is an error, never a default."""
-
-    if not isinstance(data.get(field), bool):
-        raise ValueError(f"missing or non-boolean {field}")
-    return data[field]
-
-
 class TomTomTrafficFetcher:
     """Fetch traffic flow segment data from TomTom."""
 
@@ -122,7 +114,6 @@ class TomTomTrafficFetcher:
             "free_flow_speed": _required_number(data, "freeFlowSpeed"),
             "confidence": confidence,
             "travel_time": _required_number(data, "currentTravelTime"),
-            "road_closure": _required_bool(data, "roadClosure"),
         }
 
     def fetch_many(self, locations: tuple[Location, ...]) -> list[dict[str, Any]]:

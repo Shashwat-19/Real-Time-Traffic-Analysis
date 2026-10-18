@@ -42,7 +42,6 @@ class PredictionRequest(BaseModel):
     free_flow_speed: float = Field(..., gt=0)
     confidence: float = Field(..., ge=0, le=1)
     travel_time: float = Field(..., ge=0)
-    road_closure: bool = False
     timestamp: datetime | None = None
 
 
