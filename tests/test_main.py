@@ -31,7 +31,6 @@ class FakeFetcher:
                 "free_flow_speed": 50.0,
                 "confidence": 0.9,
                 "travel_time": 100.0,
-                "road_closure": False,
             }
         ]
 

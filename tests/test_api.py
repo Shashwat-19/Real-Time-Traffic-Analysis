@@ -75,7 +75,6 @@ def raw_row(timestamp, location="Pune", latitude=18.5, longitude=73.8, speed=30.
         "free_flow_speed": 60.0,
         "confidence": 0.9,
         "travel_time": 100.0,
-        "road_closure": False,
     }
 
 
