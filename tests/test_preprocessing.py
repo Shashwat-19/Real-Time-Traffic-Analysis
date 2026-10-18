@@ -9,6 +9,7 @@ from src.preprocessing import (
     FEATURE_COLUMNS,
     LABEL_SOURCE_COLUMNS,
     NUMERIC_FEATURES,
+    exclude_repeats,
     split_chronologically,
 )
 
@@ -21,6 +22,19 @@ def test_no_model_feature_is_a_label_source_column() -> None:
     leaked = set(FEATURE_COLUMNS) & LABEL_SOURCE_COLUMNS
 
     assert leaked == set()
+
+
+def test_is_repeat_is_neither_a_feature_nor_a_label_source() -> None:
+    assert "is_repeat" not in FEATURE_COLUMNS
+    assert "is_repeat" not in LABEL_SOURCE_COLUMNS
+
+
+def test_exclude_repeats_drops_flagged_rows_and_treats_missing_flag_as_false() -> None:
+    frame = pd.DataFrame({"x": [1, 2, 3], "is_repeat": [False, True, False]})
+    legacy = pd.DataFrame({"x": [1, 2]})
+
+    assert exclude_repeats(frame)["x"].tolist() == [1, 3]
+    assert exclude_repeats(legacy)["x"].tolist() == [1, 2]
 
 
 def _featured(count: int) -> pd.DataFrame:

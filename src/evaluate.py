@@ -11,13 +11,13 @@ from sklearn.metrics import classification_report
 from src.config import get_settings
 from src.feature_engineering import ensure_features
 from src.model_artifacts import load_verified_model
-from src.preprocessing import split_chronologically
+from src.preprocessing import exclude_repeats, split_chronologically
 
 
 def evaluate_model(dataframe: pd.DataFrame, model_path: Path) -> dict:
     """Evaluate a persisted model on the same chronological test block training used."""
 
-    featured = ensure_features(dataframe)
+    featured = ensure_features(exclude_repeats(dataframe))
     _, x_test, _, y_test = split_chronologically(featured)
     model, _ = load_verified_model(model_path)
     predictions = model.predict(x_test)

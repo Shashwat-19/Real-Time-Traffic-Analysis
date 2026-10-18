@@ -33,6 +33,10 @@ RAW_COLUMNS = [
 # timestamp is not compared; a repeated cached speed is what would otherwise inflate the data.
 VALUE_COLUMNS = [column for column in RAW_COLUMNS if column != "timestamp"]
 
+# Every reading is stored. is_repeat flags a reading whose values equal the previous stored
+# reading for the same location; training and evaluation exclude those rows.
+STORED_COLUMNS = [*RAW_COLUMNS, "is_repeat"]
+
 
 class TrafficDataRepository:
     """Persist and read traffic observations from CSV files."""
@@ -43,36 +47,41 @@ class TrafficDataRepository:
         self.processed_path = processed_path
 
     def append_raw_records(self, records: Iterable[dict]) -> int:
-        """Append new raw records, skipping repeats. Returns the number written."""
+        """Append new raw records, flagging repeats with is_repeat. Returns the number written."""
 
         new_df = pd.DataFrame(list(records), columns=RAW_COLUMNS)
         if new_df.empty:
             return 0
 
         existing_df = self._load_existing()
+        new_df = new_df.assign(is_repeat=False)
         combined = pd.concat(
             [frame for frame in (existing_df, new_df) if not frame.empty], ignore_index=True
         )
         is_new = combined.index >= len(existing_df)
         values = combined[VALUE_COLUMNS]
         previous = values.groupby(combined["location_name"]).shift()
-        repeat = (values == previous).all(axis=1) & is_new
-        self._write_atomic(combined[~repeat])
+        # NaN never equals NaN, so a reading with missing values is not a repeat.
+        repeat = (values == previous).all(axis=1)
+        combined.loc[is_new, "is_repeat"] = repeat[is_new]
+        self._write_atomic(combined)
 
-        skipped = int(repeat.sum())
-        written = len(new_df) - skipped
-        logger.info("Persisted %s new records; skipped %s repeats", written, skipped)
-        return written
+        repeats = int(combined.loc[is_new, "is_repeat"].sum())
+        logger.info("Persisted %s new records; %s flagged as repeats", len(new_df), repeats)
+        return len(new_df)
 
     def read_raw(self) -> pd.DataFrame:
         """Read all raw records. A missing or empty file reads as no rows."""
 
         if not self.raw_path.exists():
-            return pd.DataFrame(columns=RAW_COLUMNS)
+            return pd.DataFrame(columns=STORED_COLUMNS)
         try:
-            return pd.read_csv(self.raw_path)
+            frame = pd.read_csv(self.raw_path)
         except pd.errors.EmptyDataError:
-            return pd.DataFrame(columns=RAW_COLUMNS)
+            return pd.DataFrame(columns=STORED_COLUMNS)
+        if "is_repeat" not in frame.columns:  # files written before the flag existed
+            frame["is_repeat"] = False
+        return frame
 
     def _load_existing(self) -> pd.DataFrame:
         """Return stored rows. An unreadable or foreign-schema file is moved aside."""
@@ -81,12 +90,12 @@ class TrafficDataRepository:
             existing = self.read_raw()
         except (pd.errors.ParserError, UnicodeDecodeError):
             existing = None
-        if existing is None or list(existing.columns) != RAW_COLUMNS:
+        if existing is None or list(existing.columns) != STORED_COLUMNS:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
             backup = self.raw_path.with_name(f"{self.raw_path.name}.corrupt-{stamp}")
             os.replace(self.raw_path, backup)
             logger.error("Raw data file was unreadable or malformed; moved it to %s", backup)
-            return pd.DataFrame(columns=RAW_COLUMNS)
+            return pd.DataFrame(columns=STORED_COLUMNS)
         return existing
 
     def _write_atomic(self, dataframe: pd.DataFrame) -> None:

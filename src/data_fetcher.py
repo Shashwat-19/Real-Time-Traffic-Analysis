@@ -43,6 +43,14 @@ def _required_number(data: dict[str, Any], field: str) -> float:
     return _number(data[field], field)
 
 
+def _required_bool(data: dict[str, Any], field: str) -> bool:
+    """Return a required boolean. A missing or non-boolean field is an error, never a default."""
+
+    if not isinstance(data.get(field), bool):
+        raise ValueError(f"missing or non-boolean {field}")
+    return data[field]
+
+
 class TomTomTrafficFetcher:
     """Fetch traffic flow segment data from TomTom."""
 
@@ -86,12 +94,20 @@ class TomTomTrafficFetcher:
         Coordinates fall back to the configured location; speeds never do.
         """
 
-        data = _object(_object(payload, "payload").get("flowSegmentData", payload), "data")
+        body = _object(payload, "payload")
+        if "flowSegmentData" not in body:
+            # TomTom error bodies ({"error": ...}) can arrive with HTTP 200.
+            raise ValueError("missing flowSegmentData")
+        data = _object(body["flowSegmentData"], "data")
         coordinates = _object(data.get("coordinates"), "coordinates")
         points = coordinates.get("coordinate") or []
         if not isinstance(points, list):
             raise ValueError("coordinate is not a list")
+        # First point of the segment shape; this is the stored coordinate, not the segment's centre.
         point = _object(points[0] if points else None, "coordinate")
+        confidence = _required_number(data, "confidence")
+        if not 0 <= confidence <= 1:
+            raise ValueError("confidence is outside 0-1")
 
         return {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -104,9 +120,9 @@ class TomTomTrafficFetcher:
             else _number(point["longitude"], "longitude"),
             "current_speed": _required_number(data, "currentSpeed"),
             "free_flow_speed": _required_number(data, "freeFlowSpeed"),
-            "confidence": _required_number(data, "confidence"),
+            "confidence": confidence,
             "travel_time": _required_number(data, "currentTravelTime"),
-            "road_closure": bool(data.get("roadClosure", False)),
+            "road_closure": _required_bool(data, "roadClosure"),
         }
 
     def fetch_many(self, locations: tuple[Location, ...]) -> list[dict[str, Any]]:

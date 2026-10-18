@@ -21,7 +21,7 @@ from sklearn.utils.class_weight import compute_sample_weight
 from src.config import get_settings
 from src.feature_engineering import ensure_features
 from src.model_artifacts import XGBoostLabelClassifier, save_model_artifacts
-from src.preprocessing import build_preprocessor, split_chronologically
+from src.preprocessing import build_preprocessor, exclude_repeats, split_chronologically
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ def train_models(
     is scored once, for the selected model only.
     """
 
-    featured = ensure_features(dataframe)
+    featured = ensure_features(exclude_repeats(dataframe))
     if len(featured) < MIN_RECORDS:
         raise ValueError(
             f"At least {MIN_RECORDS} records are needed for a train/test split and CV, "

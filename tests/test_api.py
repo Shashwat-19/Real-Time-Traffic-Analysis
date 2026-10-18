@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import api.main as api_main
 from src.config import get_settings
 from src.data_storage import RAW_COLUMNS
-from src.model_artifacts import ModelIntegrityError
+from src.model_artifacts import ModelIntegrityError, sidecar_path
 
 
 class StubPredictor:
@@ -231,6 +231,19 @@ def test_predict_success_and_predictor_is_built_once(client, stub_predictor):
     assert body["prediction"] == "Medium"
     assert sum(body["probabilities"].values()) == pytest.approx(1.0)
     assert stub_predictor.instances == 1
+
+
+def test_predict_rebuilds_predictor_when_sidecar_changes(client, settings, stub_predictor):
+    settings.model_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.model_path.write_bytes(b"model")
+    sidecar = sidecar_path(settings.model_path)
+    sidecar.write_text("aaaa\n", encoding="utf-8")
+    assert client.post("/predict", json=PREDICT_BODY).status_code == 200
+
+    sidecar.write_text("bbbbbbbbbbbbbbbb\n", encoding="utf-8")
+    assert client.post("/predict", json=PREDICT_BODY).status_code == 200
+
+    assert stub_predictor.instances == 2
 
 
 def test_predict_invalid_timestamp_is_422_naming_field(client, stub_predictor):

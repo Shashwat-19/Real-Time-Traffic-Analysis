@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -13,7 +15,7 @@ from pydantic import BaseModel, Field
 from src.config import get_settings
 from src.data_storage import TrafficDataRepository
 from src.feature_engineering import add_traffic_features
-from src.model_artifacts import ModelIntegrityError
+from src.model_artifacts import ModelIntegrityError, metadata_path, sidecar_path
 from src.predict import TrafficPredictionInput, TrafficPredictor
 
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +28,8 @@ app = FastAPI(
 )
 
 _predictor: TrafficPredictor | None = None
+_predictor_key: tuple[Any, ...] | None = None
+_predictor_lock = threading.Lock()
 
 
 class PredictionRequest(BaseModel):
@@ -49,20 +53,41 @@ def repository() -> TrafficDataRepository:
     return TrafficDataRepository(settings.raw_data_path)
 
 
-def get_predictor() -> TrafficPredictor:
-    """Return the shared predictor, created on first use. A missing model is not cached."""
+def _model_key(path: Path) -> tuple[Any, ...]:
+    """Stat signature of the model and its sidecars; None marks a missing file."""
 
-    global _predictor
-    if _predictor is None:
-        _predictor = TrafficPredictor(get_settings().model_path)
-    return _predictor
+    key: list[tuple[int, int] | None] = []
+    for file in (path, sidecar_path(path), metadata_path(path)):
+        try:
+            stat = file.stat()
+            key.append((stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            key.append(None)
+    return tuple(key)
+
+
+def get_predictor() -> TrafficPredictor:
+    """Return the shared predictor, rebuilt when the model or its sidecars change.
+
+    The key is taken before building, so a change made mid-build triggers another rebuild.
+    """
+
+    global _predictor, _predictor_key
+    path = get_settings().model_path
+    key = _model_key(path)
+    with _predictor_lock:
+        if _predictor is None or key != _predictor_key:
+            _predictor = TrafficPredictor(path)
+            _predictor_key = key
+        return _predictor
 
 
 def reset_predictor() -> None:
     """Drop the cached predictor so the next request builds a new one (used by tests)."""
 
-    global _predictor
+    global _predictor, _predictor_key
     _predictor = None
+    _predictor_key = None
 
 
 def _sorted_rows(since: datetime | None = None) -> pd.DataFrame:

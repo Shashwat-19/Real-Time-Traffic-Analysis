@@ -19,6 +19,8 @@ def valid_payload(**overrides: Any) -> dict[str, Any]:
         "confidence": 0.93,
         "currentTravelTime": 120,
         "roadClosure": False,
+        "frc": "FRC2",
+        "freeFlowTravelTime": 90,
         "coordinates": {"coordinate": [{"latitude": 28.6, "longitude": 77.2}]},
     }
     data.update(overrides)
@@ -33,6 +35,8 @@ def test_parse_response_extracts_required_fields() -> None:
             "confidence": 0.93,
             "currentTravelTime": 120,
             "roadClosure": False,
+            "frc": "FRC2",
+            "freeFlowTravelTime": 90,
             "coordinates": {"coordinate": [{"latitude": 28.6, "longitude": 77.2}]},
         }
     }
@@ -85,11 +89,33 @@ def test_parse_response_rejects_malformed_coordinates() -> None:
         TomTomTrafficFetcher.parse_response(valid_payload(coordinates={"coordinate": "x"}), DELHI)
 
 
-def test_parse_response_treats_missing_road_closure_as_open() -> None:
+@pytest.mark.parametrize("road_closure", [None, "false", 0])
+def test_parse_response_rejects_missing_or_non_boolean_road_closure(road_closure: Any) -> None:
     payload = valid_payload()
-    del payload["flowSegmentData"]["roadClosure"]
+    if road_closure is None:
+        del payload["flowSegmentData"]["roadClosure"]
+    else:
+        payload["flowSegmentData"]["roadClosure"] = road_closure
 
-    assert TomTomTrafficFetcher.parse_response(payload, DELHI)["road_closure"] is False
+    with pytest.raises(ValueError, match="roadClosure"):
+        TomTomTrafficFetcher.parse_response(payload, DELHI)
+
+
+@pytest.mark.parametrize("confidence", [-0.1, 1.5])
+def test_parse_response_rejects_confidence_outside_unit_interval(confidence: float) -> None:
+    with pytest.raises(ValueError, match="confidence"):
+        TomTomTrafficFetcher.parse_response(valid_payload(confidence=confidence), DELHI)
+
+
+def test_parse_response_rejects_missing_flow_segment_data() -> None:
+    error_body = {
+        "error": "Forbidden",
+        "httpStatusCode": 403,
+        "detailedError": {"code": "FORBIDDEN", "message": "Invalid API key"},
+    }
+
+    with pytest.raises(ValueError, match="flowSegmentData"):
+        TomTomTrafficFetcher.parse_response(error_body, DELHI)
 
 
 class FakeResponse:
@@ -201,3 +227,23 @@ def test_fetch_location_does_not_retry_client_errors(monkeypatch: pytest.MonkeyP
 
     assert len(calls) == 1
     assert sleeps == []
+
+
+ERROR_BODY = {
+    "error": "Forbidden",
+    "httpStatusCode": 403,
+    "detailedError": {"code": "FORBIDDEN", "message": "Invalid API key"},
+}
+
+
+@pytest.mark.parametrize(
+    ("status", "exc_name"), [(200, "ValueError"), (403, "HTTPError"), (429, "HTTPError")]
+)
+def test_fetch_many_drops_documented_error_body(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, status: int, exc_name: str
+) -> None:
+    fake_get(monkeypatch, [FakeResponse(status, ERROR_BODY)] * 3)
+    fetcher = TomTomTrafficFetcher(SECRET_KEY, sleep=lambda _: None)
+
+    assert fetcher.fetch_many((DELHI,)) == []
+    assert f"Dropped Delhi: {exc_name}" in caplog.text

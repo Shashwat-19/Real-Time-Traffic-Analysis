@@ -128,6 +128,15 @@ def test_train_models_does_not_refeaturise_a_featured_frame(
     assert metrics["split"]["test_rows"] == 24
 
 
+def test_train_models_excludes_repeat_rows_from_split(tmp_path: Path) -> None:
+    raw = _raw()
+    raw["is_repeat"] = np.arange(len(raw)) % 4 == 3  # 30 of 120 readings are repeats
+
+    metrics = train_models(raw, tmp_path / "m.pkl", tmp_path / "metrics.json")
+
+    assert metrics["split"]["train_rows"] + metrics["split"]["test_rows"] == 90
+
+
 def test_train_models_rejects_too_little_data(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="At least 25 records"):
         train_models(_raw(count=10), tmp_path / "m.pkl", tmp_path / "metrics.json")

@@ -52,6 +52,14 @@ def build_preprocessor() -> ColumnTransformer:
     )
 
 
+def exclude_repeats(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Drop repeated readings before training or evaluation. Missing flags count as not repeats."""
+
+    if "is_repeat" not in dataframe.columns:
+        return dataframe
+    return dataframe[~dataframe["is_repeat"].fillna(False).astype(bool)]
+
+
 def split_chronologically(
     featured: pd.DataFrame, test_size: float = 0.2
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
