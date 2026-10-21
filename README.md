@@ -1,60 +1,156 @@
-# Real-Time Traffic Congestion Prediction and Geospatial Analytics Platform
+<div align="center">
 
-Project for collecting live traffic flow data from the TomTom Traffic Flow API, storing historical observations, training congestion prediction models, exposing FastAPI endpoints, and visualizing geospatial analytics in Streamlit.
+# 🚦 Real-Time Traffic Congestion Prediction & Geospatial Analytics
 
-## Architecture
+**Collect live traffic data, predict congestion, and explore it on an interactive map.**
 
-```text
-TomTom Traffic Flow API
-        |
-        v
-Scheduler / main.py
-        |
-        v
-CSV Repository  --->  Feature Engineering  --->  Model Training / Evaluation
-        |                         |                         |
-        v                         v                         v
-FastAPI Service             Streamlit Dashboard        models/traffic_model.pkl
+[![CI](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/Shashwat-19/Real-Time-Traffic-Analysis/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.12%20|%203.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.41-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.6-F7931E?logo=scikitlearn&logoColor=white)](https://scikit-learn.org/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-2.1-337AB7)](https://xgboost.readthedocs.io/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-D7FF64?logo=ruff&logoColor=black)](https://github.com/astral-sh/ruff)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/BangaloreTraffic.ipynb)
+
+</div>
+
+---
+
+## 📖 Overview
+
+This platform pulls live flow data from the **TomTom Traffic Flow API**, stores every observation as history, trains a congestion classifier (**Low / Medium / High**), and serves the results through a **FastAPI** service and a **Streamlit** dashboard with a Folium map.
+
+Try it without installing anything: **[Open the Bangalore notebook in Colab](https://colab.research.google.com/github/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/BangaloreTraffic.ipynb)**. It needs your own `TOMTOM_API_KEY`.
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Workflows](#-workflows)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Usage](#-usage)
+- [API Reference](#-api-reference)
+- [Docker](#-docker-deployment)
+- [Notebooks](#-notebooks)
+- [Testing & Linting](#-testing--linting)
+- [Project Structure](#-project-structure)
+- [Roadmap](#-roadmap)
+
+## ✨ Features
+
+| Area | What you get |
+|---|---|
+| **Data collection** | TomTom Flow Segment Data integration. Readings with `confidence` outside 0–1 are rejected. A scheduler runs every `FETCH_INTERVAL_MINUTES` (default 10). |
+| **Storage** | Append-only CSV through `TrafficDataRepository`. Repeated readings carry an `is_repeat` flag and are skipped in training and evaluation. |
+| **Feature engineering** | Speed ratio, local-time fields (Asia/Kolkata), weekend and peak-hour flags, congestion labels. |
+| **Modelling** | Logistic Regression, Random Forest, XGBoost and SVM compared on a chronological train/test split. The best model is persisted. |
+| **Model safety** | `models/traffic_model.pkl` ships with a SHA-256 sidecar and a metadata file, both checked before loading. The API hot-reloads when they change. |
+| **API** | FastAPI endpoints for health, latest traffic, history and prediction. |
+| **Dashboard** | Streamlit with metrics, a Folium map of the latest reading per location, Plotly charts and a prediction form. |
+| **Ops** | Docker Compose for API, dashboard and scheduler. GitHub Actions runs `ruff` and `pytest`. |
+
+## 🏗 Architecture
+
+```mermaid
+flowchart LR
+    A[TomTom Traffic<br/>Flow API] --> B[Scheduler<br/>main.py]
+    B --> C[(CSV Repository<br/>TrafficDataRepository)]
+    C --> D[Feature<br/>Engineering]
+    D --> E[Model Training<br/>& Evaluation]
+    E --> F[[models/<br/>traffic_model.pkl]]
+    C --> G[FastAPI Service]
+    F --> G
+    C --> H[Streamlit Dashboard]
+    F --> H
+    G --> I([Clients / curl])
+    H --> J([Browser])
 ```
 
-The storage layer uses CSV files through `TrafficDataRepository`. API, dashboard, and ML modules depend on that repository boundary, so the project can move to PostgreSQL later with minimal changes.
+All services depend on the repository boundary, so storage can move from CSV to PostgreSQL later with minimal changes.
 
-## Features
+## 🔄 Workflows
 
-- TomTom Flow Segment Data API integration, with the key read from the environment. Readings with a `confidence` outside 0-1 are rejected.
-- Raw observations appended to a CSV file. Repeated readings are stored with an `is_repeat` flag, and training and evaluation skip them.
-- Scheduler that collects data every `FETCH_INTERVAL_MINUTES` (default 10).
-- Feature engineering for speed ratio, local-time fields (Asia/Kolkata), weekend and peak-hour flags, and congestion labels.
-- Model comparison across Logistic Regression, Random Forest, XGBoost, and SVM, with a chronological train/test split.
-- Persisted best model at `models/traffic_model.pkl`, with a SHA-256 sidecar and a metadata file that are checked before loading. The API reloads the model when the file or its sidecars change.
-- FastAPI endpoints for health, latest traffic, history, and prediction.
-- Streamlit dashboard with metrics, a Folium map of the latest reading per location, Plotly charts, and a prediction form.
-- Docker and Docker Compose for the API, dashboard, and scheduler services.
-- GitHub Actions CI (`.github/workflows/ci.yml`) that runs `ruff check .` and `pytest`.
+### Data collection
 
-## Tech Stack
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Scheduler
+    participant T as TomTom API
+    participant R as Repository
+    loop every FETCH_INTERVAL_MINUTES
+        S->>T: Request flow data per location
+        T-->>S: speed, free-flow speed, confidence
+        alt confidence outside 0-1
+            S-->>S: Reject reading
+        else valid
+            S->>R: Append row (flag is_repeat)
+        end
+    end
+```
 
-- Backend: Python 3.12 or 3.13 (3.14 fails to build pydantic-core), FastAPI, Uvicorn
-- Machine Learning: Pandas, NumPy, Scikit-Learn, XGBoost, Joblib
-- Visualization: Folium, Plotly, Streamlit
-- Data Storage: CSV now, repository pattern for PostgreSQL migration later
-- Deployment: Docker, Docker Compose, GitHub Actions
+### Training pipeline
 
-## Installation
+```mermaid
+flowchart TD
+    A[(Raw CSV)] --> B[Drop repeats<br/>and bad rows]
+    B --> C[Add features:<br/>speed ratio, time, peak hour]
+    C --> D[Label congestion<br/>Low / Medium / High]
+    D --> E[Chronological<br/>train / test split]
+    E --> F{Compare models}
+    F --> F1[Logistic Regression]
+    F --> F2[Random Forest]
+    F --> F3[XGBoost]
+    F --> F4[SVM]
+    F1 & F2 & F3 & F4 --> G[Pick best by metrics]
+    G --> H[Save model + SHA-256<br/>+ metadata]
+```
 
-Run these commands from the cloned repository folder:
+### Prediction request
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as FastAPI
+    participant M as Model file
+    C->>A: POST /predict
+    A->>A: Validate input (422 on error)
+    A->>M: Load if changed, verify checksum
+    alt model missing
+        A-->>C: 503
+    else ok
+        A-->>C: prediction + probabilities
+    end
+```
+
+## 🧰 Tech Stack
+
+- **Backend:** Python 3.12 or 3.13 (3.14 fails to build pydantic-core), FastAPI, Uvicorn
+- **Machine learning:** Pandas, NumPy, scikit-learn, XGBoost, Joblib
+- **Visualization:** Folium, Plotly, Streamlit
+- **Storage:** CSV now, repository pattern ready for PostgreSQL
+- **Deployment:** Docker, Docker Compose, GitHub Actions
+
+## 🚀 Getting Started
+
+You need a free [TomTom API key](https://developer.tomtom.com/).
 
 ```bash
+git clone https://github.com/Shashwat-19/Real-Time-Traffic-Analysis.git
+cd Real-Time-Traffic-Analysis
+
 python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt        # runtime only
-pip install -r requirements-dev.txt    # adds pytest, ruff and httpx for tests and linting
+pip install -r requirements-dev.txt    # adds pytest, ruff and httpx
 cp .env.example .env
 ```
 
 Edit `.env` and set `TOMTOM_API_KEY`. Never commit `.env`; it is in `.gitignore`.
-
-The Bangalore notebook (`BangaloreTraffic.ipynb`) does not read `.env`. Export `TOMTOM_API_KEY` in your shell before running it. It builds its history in `bangalore_traffic_data.csv`.
 
 `LOCATIONS` format:
 
@@ -62,57 +158,31 @@ The Bangalore notebook (`BangaloreTraffic.ipynb`) does not read `.env`. Export `
 Location Name:latitude:longitude,Another Location:latitude:longitude
 ```
 
-## Usage
+## 🕹 Usage
 
-Collect one batch through the scheduler entry point:
+| Step | Command | Result |
+|---|---|---|
+| Collect one batch | `python main.py` | New rows in `data/` |
+| Train a model | `python -m src.train` | `models/traffic_model.pkl` (needs enough history) |
+| Run the API | `uvicorn api.main:app --reload` | Docs at <http://localhost:8000/docs> |
+| Run the dashboard | `python -m streamlit run src/app.py` | App at <http://localhost:8501> |
 
-```bash
-python main.py
-```
+> **Note:** plain `streamlit run src/app.py` fails with `ModuleNotFoundError: No module named 'src'` on the pinned Streamlit 1.41.1. Use `python -m streamlit run src/app.py`, or `PYTHONPATH=. streamlit run src/app.py`.
 
-Train a model after enough historical records are collected:
-
-```bash
-python -m src.train
-```
-
-Run the FastAPI service:
-
-```bash
-uvicorn api.main:app --reload
-```
-
-Open API docs at `http://localhost:8000/docs`.
-
-Run the dashboard:
-
-```bash
-python -m streamlit run src/app.py
-```
-
-Open the dashboard at `http://localhost:8501`.
-
-Note: the plain `streamlit run src/app.py` command fails with `ModuleNotFoundError: No module named 'src'` on the pinned Streamlit 1.41.1, because Streamlit only puts `src/` on the import path. Use `python -m streamlit run src/app.py` (the working directory is then on the path), or `PYTHONPATH=. streamlit run src/app.py`.
-
-## API Documentation
+## 📡 API Reference
 
 All traffic endpoints return JSON records. Rows with missing or non-numeric coordinates are left out, and empty values are returned as `null`.
 
-### `GET /health`
-
-Returns service status and the current UTC timestamp.
-
-### `GET /traffic/latest?limit=20`
-
-Returns the newest observation for each location, newest first. `limit` (1-500) caps the number of locations returned.
-
-### `GET /traffic/history?limit=100&since=2026-06-08T10:00:00+00:00`
-
-Returns the newest observations, newest first. `limit` (1-5000, default 100) caps the number of rows. `since` is an optional ISO 8601 datetime; only rows at or after it are returned. A value without a timezone is read as UTC. An invalid `since` returns 422.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Service status and current UTC timestamp. |
+| `GET` | `/traffic/latest?limit=20` | Newest observation per location, newest first. `limit` is 1–500. |
+| `GET` | `/traffic/history?limit=100&since=<ISO 8601>` | Newest observations first. `limit` is 1–5000 (default 100). `since` without a timezone is read as UTC; an invalid value returns 422. |
+| `POST` | `/predict` | Predict congestion for one reading. |
 
 ### `POST /predict`
 
-Request body:
+Request:
 
 ```json
 {
@@ -127,75 +197,69 @@ Request body:
 }
 ```
 
-`timestamp` is optional and defaults to now. The `features` object in the response holds only the model input columns. Latitude must be between -90 and 90, longitude between -180 and 180.
+`timestamp` is optional and defaults to now. Latitude must be between -90 and 90, longitude between -180 and 180.
 
 Response:
 
 ```json
 {
   "prediction": "Medium",
-  "probabilities": {
-    "High": 0.12,
-    "Low": 0.18,
-    "Medium": 0.70
-  },
+  "probabilities": { "High": 0.12, "Low": 0.18, "Medium": 0.70 },
   "features": {}
 }
 ```
 
-Error responses:
+`features` holds only the model input columns.
 
 | Status | Meaning |
 |---|---|
-| 422 | Invalid input: a bad `timestamp`, out-of-range latitude, or missing/zero speeds. The body names the problem. |
-| 503 | The model file is missing. Train the model first. |
-| 500 | Unexpected error, including a model whose checksum or metadata does not match. The body is `{"detail": "Internal server error"}`; details are in the server log only. |
+| `422` | Invalid input: bad `timestamp`, out-of-range latitude, or missing/zero speeds. The body names the problem. |
+| `503` | The model file is missing. Train the model first. |
+| `500` | Unexpected error, including a checksum or metadata mismatch. Body is `{"detail": "Internal server error"}`; details are in the server log only. |
 
-## Docker Deployment
+## 🐳 Docker Deployment
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Services:
+| Service | Address | Notes |
+|---|---|---|
+| API | <http://127.0.0.1:8000> | Mounts `data/`, `models/`, `outputs/` read-only |
+| Dashboard | <http://127.0.0.1:8501> | Mounts `data/`, `models/`, `outputs/` read-only |
+| Scheduler | background | Writes to `data/`; the only service that reads `.env` |
 
-- API: `http://127.0.0.1:8000`
-- Dashboard: `http://127.0.0.1:8501`
-- Scheduler: background collection service, the only service that reads `.env`
+- Ports are published on loopback only, so nothing is reachable from other machines. To expose them, change the `127.0.0.1:` prefix in `docker-compose.yml`, and add API authentication first.
+- Containers run as user `app` (UID 1000). On Linux, make the host `data/` folder writable by that UID, for example `sudo chown -R 1000:1000 data`.
 
-Ports are published on the loopback interface only, so the API and dashboard are not reachable from other machines. To expose them, change the `127.0.0.1:` prefix in `docker-compose.yml`, and first add authentication to the API.
+## 📓 Notebooks
 
-The API and dashboard mount `data/`, `models/` and `outputs/` read-only. The scheduler writes to `data/`, and the container runs as user `app` (UID 1000). On Linux, make the host `data/` folder writable by UID 1000 (for example `sudo chown -R 1000:1000 data`). Only the scheduler needs `.env`; the API and dashboard use the default paths and need `MODEL_PATH` only if you changed it.
+| Notebook | Purpose | Colab |
+|---|---|---|
+| [`BangaloreTraffic.ipynb`](BangaloreTraffic.ipynb) | Collect and map Bangalore traffic. Installs missing packages itself. Does not read `.env`: set `TOMTOM_API_KEY` first. History is kept in `bangalore_traffic_data.csv`. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/BangaloreTraffic.ipynb) |
+| [`notebooks/EDA.ipynb`](notebooks/EDA.ipynb) | Exploratory analysis of collected data. Imports from `src/`, so clone the repo first. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Shashwat-19/Real-Time-Traffic-Analysis/blob/main/notebooks/EDA.ipynb) |
 
-## Testing and Linting
+## 🧪 Testing & Linting
 
 ```bash
 pytest -q
 ruff check .
 ```
 
-CI runs both commands on every push and pull request.
+CI runs both on every push and pull request.
 
-## Dashboard Screenshots
-
-Add screenshots to `outputs/reports/` after running the dashboard:
-
-- `outputs/reports/dashboard-overview.png`
-- `outputs/reports/map-view.png`
-- `outputs/reports/prediction-form.png`
-
-## Project Structure
+## 🗂 Project Structure
 
 ```text
 Real-Time-Traffic-Analysis/
 ├── .github/workflows/ci.yml
 ├── api/
-│   └── main.py
+│   └── main.py                  # FastAPI app
 ├── data/
 │   ├── raw/
 │   └── processed/
-├── models/
+├── models/                      # traffic_model.pkl + sidecars
 ├── notebooks/
 │   └── EDA.ipynb
 ├── outputs/
@@ -203,35 +267,32 @@ Real-Time-Traffic-Analysis/
 │   ├── metrics/
 │   └── reports/
 ├── src/
-│   ├── app.py
+│   ├── app.py                   # Streamlit dashboard
 │   ├── config.py
-│   ├── data_fetcher.py
-│   ├── data_storage.py
+│   ├── data_fetcher.py          # TomTom client
+│   ├── data_storage.py          # TrafficDataRepository
 │   ├── evaluate.py
 │   ├── feature_engineering.py
 │   ├── map_generator.py
-│   ├── model_artifacts.py
+│   ├── model_artifacts.py       # checksum + metadata checks
 │   ├── predict.py
 │   ├── preprocessing.py
 │   └── train.py
 ├── tests/
-├── .dockerignore
-├── .env.example
-├── .gitignore
 ├── BangaloreTraffic.ipynb
 ├── Dockerfile
 ├── docker-compose.yml
-├── main.py
+├── main.py                      # scheduler entry point
 ├── pyproject.toml
 ├── requirements.txt
 └── requirements-dev.txt
 ```
 
-## Future Improvements
+## 🗺 Roadmap
 
-- Replace CSV storage with PostgreSQL and SQLAlchemy migrations.
-- Add a model registry and experiment tracking.
-- Add authenticated API access.
-- Add live dashboard refresh and background API-triggered collection.
-- Add geohash-based spatial aggregation.
-- Add drift monitoring and retraining automation.
+- [ ] Replace CSV storage with PostgreSQL and SQLAlchemy migrations
+- [ ] Model registry and experiment tracking
+- [ ] Authenticated API access
+- [ ] Live dashboard refresh and API-triggered collection
+- [ ] Geohash-based spatial aggregation
+- [ ] Drift monitoring and automated retraining
